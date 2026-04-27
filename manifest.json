@@ -1,0 +1,9 @@
+{
+  "name": "MagixGmap",
+  "version": "1.0.0",
+  "description": "Gestion des cartes Google Maps, géolocalisation automatique et affichage multi-adresses.",
+  "author": "Magix CMS",
+  "type": "hybrid",
+  "has_config": true,
+  "default_hooks": []
+}
