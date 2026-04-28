@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace Plugins\MagixGmap\src;
+namespace Plugins\Magixgmap\src;
 
 class SitemapProvider
 {

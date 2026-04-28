@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Plugins\MagixGmap\src;
+namespace Plugins\Magixgmap\src;
 
 use App\Backend\Controller\BaseController;
-use Plugins\MagixGmap\db\MagixGmapAdminDb;
+use Plugins\Magixgmap\db\MagixGmapAdminDb;
 use Magepattern\Component\HTTP\Request;
 use Magepattern\Component\Tool\FormTool;
 use Magepattern\Component\Tool\SmartyTool;

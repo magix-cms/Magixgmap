@@ -1,11 +1,11 @@
 /**
  * @copyright MAGIX CMS Copyright (c) 2008-2026 Gerits Aurelien, http://www.gerits-aurelien.be, http://www.magix-cms.com
  * @license Dual licensed under the MIT or GPL Version 3 licenses.
- * @version 2.0 (Migration to AdvancedMarkerElement)
- * @date 17-01-2026
+ * @version 3.2 (Fix Destination text & Routes API FieldMasks)
+ * @date 27-04-2026
  * @author Aurélien Gérits <aurelien@magix-cms.com>
  * @name GoogleMap
- * @description Gestionnaire de cartes Google Maps avec support des marqueurs HTML personnalisés et itinéraires.
+ * @description Gestionnaire de cartes Google Maps avec support des marqueurs natifs PinElement et itinéraires V3.
  */
 class GoogleMap {
 	/**
@@ -17,11 +17,12 @@ class GoogleMap {
 		this.OS = null;
 		this.lang = null;
 		this.origin = null;
+		this.markerColor = options.markerColor || '#f3483c';
 		this.map = {
 			id: 'gmap_map',
 			options: {
 				zoom: 15,
-				mapId: null, // Injecté via data-map-id
+				mapId: null,
 				mapTypeControl: true,
 				mapTypeControlOptions: {
 					style: google.maps.MapTypeControlStyle.DROPDOWN_MENU,
@@ -33,7 +34,7 @@ class GoogleMap {
 				streetViewControl: true
 			},
 			instance: null,
-			directions: null,
+			polylines: [],
 			markers: [],
 			infowindows: []
 		};
@@ -41,7 +42,7 @@ class GoogleMap {
 		this.markers = [];
 		this.flags = [];
 		this.goTo = null;
-		this.goToContentString = ""; // Sauvegarde du HTML pour les directions
+		this.goToContentString = "";
 		this.layers = 0;
 
 		this.options = {
@@ -53,7 +54,6 @@ class GoogleMap {
 
 		if(typeof options === 'object') this.set(options);
 
-		// Récupération dynamique du Map ID
 		const mapContainer = document.getElementById(this.map.id);
 		if (mapContainer && mapContainer.dataset.mapId) {
 			this.map.options.mapId = mapContainer.dataset.mapId;
@@ -104,24 +104,6 @@ class GoogleMap {
 		document.getElementById('openapp').setAttribute('href', href);
 	}
 
-	centerMap(toBounds, offsetX, offsetY) {
-		let GM = this;
-		let center;
-		if (toBounds) {
-			GM.map.instance.panToBounds(GM.map.instance.getBounds());
-			center = GM.map.instance.getCenter();
-		} else {
-			center = GM.map.options.center;
-			GM.map.instance.setZoom(GM.map.options.zoom);
-		}
-		let scale = Math.pow(2, GM.map.instance.getZoom());
-		let worldCoordinateCenter = GM.map.instance.getProjection().fromLatLngToPoint(center);
-		let pixelOffset = new GM.g.Point( (offsetX/scale) || 0,(offsetY/scale) || 0 );
-		let worldCoordinateNewCenter = new GM.g.Point(worldCoordinateCenter.x - pixelOffset.x, worldCoordinateCenter.y + pixelOffset.y);
-		let newCenter = GM.map.instance.getProjection().fromPointToLatLng(worldCoordinateNewCenter);
-		GM.map.instance.setCenter(newCenter);
-	}
-
 	showDirectionPanel() {
 		let directions = document.getElementById('r-directions');
 		if (directions) {
@@ -142,22 +124,18 @@ class GoogleMap {
 		}
 	}
 
-	hideLayer(layer) {
-		if(Array.isArray(layer)) {
-			layer.forEach((item) => this.hideLayer(item));
-		} else {
-			if(layer.setMap) layer.setMap(null);
-			else layer.map = null;
-		}
-	}
-
 	delDirections() {
 		let GM = this;
-		if (GM.map.directions !== null) {
-			GM.hideMarkers(GM.flags);
-			GM.map.directions.set('directions', null);
-			let directions = document.getElementById('r-directions');
-			if (directions) directions.classList.remove('sizedirection');
+		if (GM.map.polylines && GM.map.polylines.length > 0) {
+			GM.map.polylines.forEach(p => p.setMap(null));
+			GM.map.polylines = [];
+		}
+		GM.hideMarkers(GM.flags);
+
+		let directions = document.getElementById('r-directions');
+		if (directions) {
+			directions.classList.remove('sizedirection');
+			directions.innerHTML = '';
 		}
 		GM.showMarkers(GM.map.markers);
 	}
@@ -169,55 +147,79 @@ class GoogleMap {
 		if (dest.length > 0) {
 			GM.delDirections();
 
+			// 🟢 1. CORRECTION : On utilise '*' pour garantir que TOUS les champs (dont les textes) sont renvoyés
 			let request = {
 				origin: dest,
 				destination: GM.goTo.getPosition(),
-				travelMode: google.maps.DirectionsTravelMode.DRIVING
+				travelMode: 'DRIVING',
+				fields: ['*']
 			};
-			let directionService = new GM.g.DirectionsService();
-			directionService.route(request)
-				.then((result) => {
-					if (result) {
-						let leg = result.routes[0].legs[0];
-						let bounds = new GM.g.LatLngBounds();
-						bounds.extend(leg.start_location);
-						bounds.extend(leg.end_location);
 
-						let flagsData = [
-							{ pos: leg.start_location, label: 'A', color: 'grey', content: leg.start_address },
-							{ pos: leg.end_location, label: 'B', color: 'main', content: GM.goToContentString }
-						];
+			GM.g.Route.computeRoutes(request)
+				.then((result) => {
+					if (result.routes && result.routes.length > 0) {
+						let route = result.routes[0];
+						let leg = route.legs[0];
 
 						GM.hideMarkers(GM.map.markers);
 
+						// 🟢 2. CORRECTION : Dans l'API JS, c'est directement l'objet de coordonnées !
+						let startPos = leg.startLocation;
+						let endPos = leg.endLocation;
+
+						let flagsData = [
+							{ pos: startPos, label: 'A', color: '#808080', content: dest },
+							{ pos: endPos, label: 'B', color: GM.markerColor, content: GM.goToContentString }
+						];
+
 						flagsData.forEach((data, index) => {
-							let iconUrl = "/"+GM.lang+"/gmap/?marker="+data.color+"&dotless=true";
-							let markerEl = GM.createMarkerElement(iconUrl, data.label);
+							let pin = new GM.g.PinElement({
+								background: data.color,
+								glyphColor: 'white',
+								borderColor: '#ffffff'
+							});
+							if (data.label) pin.glyphText = data.label;
+
 							let flag = new GM.g.Marker({
 								map: GM.map.instance,
 								position: data.pos,
-								content: markerEl
+								content: pin
 							});
+
 							let infowindow = new google.maps.InfoWindow({ content: data.content });
-							flag.addListener('click', () => {
+							flag.addListener('gmp-click', () => {
 								infowindow.open({ map: GM.map.instance, anchor: flag });
 							});
 							GM.flags[index] = flag;
 						});
 
-						if (GM.map.directions === null) {
-							GM.map.directions = new google.maps.DirectionsRenderer({
-								preserveViewport: true,
-								suppressMarkers: true
-							});
+						GM.map.polylines = route.createPolylines();
+						GM.map.polylines.forEach(polyline => polyline.setMap(GM.map.instance));
+
+						const panel = document.getElementById('r-directions');
+						if (panel) {
+							panel.innerHTML = '<h6 class="fw-bold px-3 pt-3 mb-2 text-primary border-bottom pb-2">Détail de l\'itinéraire</h6>';
+							let list = document.createElement('ol');
+							list.className = "list-group list-group-flush list-group-numbered mb-3 shadow-sm";
+
+							if (leg.steps) {
+								leg.steps.forEach(step => {
+									let li = document.createElement('li');
+									li.className = "list-group-item bg-transparent text-muted small py-2 ms-2 me-2 border-bottom";
+
+									// 🟢 3. CORRECTION : Le vrai chemin pour extraire le texte d'instruction de Google
+									li.innerHTML = step.navigationInstruction?.instructions || step.instructions || "Continuer sur l'itinéraire.";
+
+									list.appendChild(li);
+								});
+							}
+							panel.appendChild(list);
 						}
-						GM.map.directions.setMap(GM.map.instance);
-						GM.map.directions.setPanel(document.getElementById('r-directions'));
-						GM.map.directions.setDirections(result);
+
 						GM.showDirectionPanel();
 
 						let x = document.getElementById('gmap-address').getBoundingClientRect().width;
-						GM.map.instance.fitBounds(bounds,{ bottom: 0, left: x, right: 0, top: 0 });
+						GM.map.instance.fitBounds(route.viewport, { bottom: 0, left: x, right: 0, top: 0 });
 					}
 				})
 				.catch((e) => { console.error("Erreur itinéraire:", e); });
@@ -226,36 +228,42 @@ class GoogleMap {
 
 	getDirection() {
 		let GM = this;
-		document.querySelector('.form-search').addEventListener('submit',(e) => {
-			e.preventDefault();
-			GM.setDirection();
-		});
+		const form = document.querySelector('.form-search');
+		if(form) {
+			form.addEventListener('submit', (e) => {
+				e.preventDefault();
+				GM.setDirection();
+			});
+		}
 
 		let btn = document.querySelector('.hidepanel');
-		btn.addEventListener('click',() => {
-			let block = document.getElementById('gmap-address');
-			btn.classList.toggle('open');
-			block.classList.toggle('open');
-		});
+		if (btn) {
+			btn.addEventListener('click',() => {
+				let block = document.getElementById('gmap-address');
+				btn.classList.toggle('open');
+				block.classList.toggle('open');
+			});
+		}
 
 		let showform = document.getElementById('showform');
-		showform.addEventListener('click',() => {
-			if(showform.classList.contains('open')) {
-				GM.delDirections();
-				let bounds = new GM.g.LatLngBounds();
-				GM.markers.forEach((m) => bounds.extend({lat: m.lat, lng: m.lng}));
+		if(showform) {
+			showform.addEventListener('click',() => {
+				if(showform.classList.contains('open')) {
+					GM.delDirections();
+					let bounds = new GM.g.LatLngBounds();
+					GM.markers.forEach((m) => bounds.extend({lat: m.lat, lng: m.lng}));
 
-				// Protection Zoom Infini
-				if (GM.markers.length > 1) {
-					GM.map.instance.fitBounds(bounds);
-				} else if (GM.markers.length === 1) {
-					GM.map.instance.setCenter({lat: GM.markers[0].lat, lng: GM.markers[0].lng});
-					GM.map.instance.setZoom(GM.map.options.zoom);
+					if (GM.markers.length > 1) {
+						GM.map.instance.fitBounds(bounds);
+					} else if (GM.markers.length === 1) {
+						GM.map.instance.setCenter({lat: GM.markers[0].lat, lng: GM.markers[0].lng});
+						GM.map.instance.setZoom(GM.map.options.zoom);
+					}
+					document.getElementById('getadress').value = '';
 				}
-				document.getElementById('getadress').value = '';
-			}
-			showform.classList.toggle('open');
-		});
+				showform.classList.toggle('open');
+			});
+		}
 	}
 
 	init() {
@@ -280,26 +288,27 @@ class GoogleMap {
 				let company = (markerDetails.link === '' || markerDetails.link === null) ? markerDetails.company : '<a href="'+markerDetails.link+'">'+markerDetails.company+'</a>';
 				let point = {lat: markerDetails.lat, lng: markerDetails.lng};
 
-				let iconUrl = "/" + GM.lang + "/gmap/?marker=main";
 				let labelText = null;
-
 				if (GM.options.marker.label) {
 					if (markerDetails.label && !GM.options.marker.autoLabel) {
-						iconUrl += '&dotless=true';
 						labelText = markerDetails.label;
 					} else if (GM.options.marker.autoLabel && index > 0) {
-						iconUrl += '&dotless=true';
 						let i = index + 1;
 						labelText = String.fromCharCode(64 + (i % 26 || 26));
 					}
 				}
 
-				const markerElement = GM.createMarkerElement(iconUrl, labelText);
+				let pin = new GM.g.PinElement({
+					background: GM.markerColor,
+					glyphColor: 'white',
+					borderColor: '#ffffff'
+				});
+				if (labelText) pin.glyphText = labelText;
 
 				let marker = new GM.g.Marker({
 					map: GM.map.instance,
 					position: point,
-					content: markerElement,
+					content: pin,
 					title: markerDetails.company
 				});
 
@@ -316,17 +325,19 @@ class GoogleMap {
 					GM.goToContentString = contentString;
 					GM.origin.OriginMarker = marker;
 					infowindow.open({ map: GM.map.instance, anchor: marker });
+					// 🟢 CORRECTION : On force le remplissage des textes "Destination" au chargement
+					GM.changeDirection(infowindow);
 				}
 
 				infowindow.addListener('closeclick', () => GM.changeDirection(GM.map.infowindows[0]));
-				marker.addListener('click', () => {
+
+				marker.addListener('gmp-click', () => {
 					GM.map.infowindows.forEach((iw) => iw.close());
 					infowindow.open({ map: GM.map.instance, anchor: marker });
 					GM.changeDirection(infowindow);
 				});
 			});
 
-			// Protection Zoom Infini au chargement
 			if(GM.map.markers.length > 1) {
 				GM.map.instance.fitBounds(bounds);
 			} else {
@@ -344,60 +355,39 @@ class GoogleMap {
 				});
 			}
 
-			// Gestion clics externes
 			document.querySelectorAll('.select-marker').forEach((select) => {
-				select.addEventListener('click',(e) => {
+				select.addEventListener('click', (e) => {
 					e.preventDefault();
 					let i = select.dataset.marker;
 					if(GM.map.markers[i]) {
-						google.maps.event.trigger(GM.map.markers[i], "click");
+						google.maps.event.trigger(GM.map.markers[i], "gmp-click");
 					}
 				});
 			});
 		}
 	}
-
-	createMarkerElement(iconUrl, labelText) {
-		const container = document.createElement("div");
-		container.style.position = "relative";
-		const img = document.createElement("img");
-		img.src = iconUrl;
-		img.style.display = "block";
-		container.appendChild(img);
-		if (labelText) {
-			const span = document.createElement("span");
-			span.className = "marker-label";
-			span.textContent = labelText;
-			span.style.position = "absolute";
-			span.style.top = "13px";
-			span.style.left = "14px";
-			span.style.transform = "translate(-50%, -50%)";
-			span.style.pointerEvents = "none";
-			container.appendChild(span);
-		}
-		return container;
-	}
 }
 
 async function initMap() {
 	const { Map } = await google.maps.importLibrary("maps");
-	const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+	const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
 	const { LatLngBounds, Point } = await google.maps.importLibrary("core");
-	const { DirectionsService, DirectionsRenderer } = await google.maps.importLibrary("routes");
+	const { Route } = await google.maps.importLibrary("routes");
 
 	let gMap = new GoogleMap({
 		Map: Map,
 		Marker: AdvancedMarkerElement,
+		PinElement: PinElement,
 		LatLngBounds: LatLngBounds,
 		Point: Point,
-		DirectionsService: DirectionsService,
-		DirectionsRenderer: DirectionsRenderer
+		Route: Route,
+		markerColor: configMap.markerColor || '#f3483c'
 	}, configMap);
 }
 
 (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.${c}apis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
 	key: configMap.api_key,
-	v: "weekly", // Version hebdomadaire
+	v: "weekly",
 	lang: configMap.lang
 });
 

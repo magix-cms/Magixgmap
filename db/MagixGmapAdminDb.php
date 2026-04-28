@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Plugins\MagixGmap\db;
+namespace Plugins\Magixgmap\db;
 
 use App\Backend\Db\BaseDb;
 use Magepattern\Component\Database\QueryBuilder;

@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Plugins\MagixGmap\src;
+namespace Plugins\Magixgmap\src;
 
 use App\Frontend\Controller\BaseController;
-use Plugins\MagixGmap\db\MagixGmapFrontDb;
+use Plugins\Magixgmap\db\MagixGmapFrontDb;
 use Magepattern\Component\Tool\SmartyTool;
 
 class FrontendController extends BaseController

@@ -1,16 +1,16 @@
-# MagixGmap
+# Magixgmap
 
 [![Release](https://img.shields.io/github/release/magix-cms/magixgmap.svg)](https://github.com/magix-cms/magixgmap/releases/latest)
 [![License](https://img.shields.io/github/license/magix-cms/magixgmap.svg)](LICENSE)
 [![PHP Version](https://img.shields.io/badge/php-%3E%3D%208.2-blue.svg)](https://php.net/)
 [![Magix CMS](https://img.shields.io/badge/Magix%20CMS-4.x-success.svg)](https://www.magix-cms.com/)
 
-**MagixGmap** est un plugin professionnel de gestion de cartographie (Store Locator) conçu spécifiquement pour **Magix CMS 4**. Il permet de gérer des points d'intérêt, des calculs d'itinéraires et une intégration avancée de l'API Google Maps (V3) avec support des nouveaux *Advanced Markers*.
+**Magixgmap** est un plugin professionnel de gestion de cartographie (Store Locator) conçu spécifiquement pour **Magix CMS 4**. Il permet de gérer des points d'intérêt, des calculs d'itinéraires et une intégration avancée de l'API Google Maps (V3) avec support des nouveaux *Advanced Markers*.
 
 ## 🚀 Installation
 
 1. Téléchargez et décompressez l'archive du plugin.
-2. Placez le dossier `MagixGmap` dans le répertoire `plugins/` de votre installation.
+2. Placez le dossier `Magixgmap` dans le répertoire `plugins/` de votre installation.
 3. Connectez-vous à l'administration de votre site.
 4. Rendez-vous dans **Extensions** > **Gestionnaire**.
 5. Cliquez sur le bouton d'installation automatique pour **MagixGmap**.
